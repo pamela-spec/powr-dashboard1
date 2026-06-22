@@ -454,29 +454,32 @@ function parseCSV(text){
 function cleanNum(s){return parseFloat((s||'0').replace(/[$,\s]/g,''))||0;}
 function stamp(){return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});}
 
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbwzmsE2-gIJjtv-F7xEgnvwieWYoTOCEUGAG7vR5HxYYL-jebinF6TOKszmthnDcTFnBQ/exec';
+const TAB_MAP={socios:'socios',fact:'facturación',com:'comisiones'};
+
 async function fetchSheet(url,tipo){
-  const proxies=[
-    'https://corsproxy.io/?'+encodeURIComponent(url),
-    'https://api.allorigins.win/raw?url='+encodeURIComponent(url),
-    'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(url),
-  ];
-  for(const proxy of proxies){
-    try{
-      const controller=new AbortController();
-      const tid=setTimeout(()=>controller.abort(),8000);
-      const res=await fetch(proxy,{signal:controller.signal});
-      clearTimeout(tid);
-      if(!res.ok) continue;
-      const text=await res.text();
-      if(!text||text.length<10) continue;
-      const rows=parseCSV(text);
-      if(!rows.length) continue;
-      procesarData(rows,tipo);
-      return true;
-    }catch(e){console.warn('proxy fallo',proxy,e.message);}
+  try{
+    const tab=TAB_MAP[tipo]||tipo;
+    const apiUrl=SCRIPT_URL+'?tab='+tab;
+    const res=await fetch(apiUrl);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const json=await res.json();
+    if(!Array.isArray(json)||!json.length) throw new Error('Sin datos');
+    procesarDataJSON(json,tipo);
+    return true;
+  }catch(e){
+    console.error('fetchSheet error',tipo,e);
+    return false;
   }
-  console.error('Todos los proxies fallaron para',tipo);
-  return false;
+}
+
+function procesarDataJSON(json,tipo){
+  const rows=json.map(r=>{
+    const out={};
+    Object.keys(r).forEach(k=>out[k.toString().toLowerCase().trim()]=String(r[k]||'').trim());
+    return out;
+  });
+  procesarData(rows,tipo);
 }
 
 function procesarData(rows,tipo){
