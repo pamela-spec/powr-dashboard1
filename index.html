@@ -432,12 +432,12 @@ function setSyncState(s){
 
 async function syncAll(){
   setSyncState('loading');
-  // All tabs load from Apps Script directly
-  const tipos=['socios','bajas','accesos','declinados','fact','com'];
   let ok=true;
-  for(const tipo of tipos){
-    const r=await fetchSheet('',tipo);
-    if(!r) ok=false;
+  for(const tipo of ['socios','fact','com','bajas','accesos','declinados']){
+    try{
+      const r=await fetchSheet('',tipo);
+      if(!r) ok=false;
+    }catch(e){ok=false;}
   }
   setSyncState(ok?'ok':'error');
 }
@@ -460,7 +460,7 @@ function parseCSV(text){
 function cleanNum(s){return parseFloat((s||'0').replace(/[$,\s]/g,''))||0;}
 function stamp(){return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});}
 
-const SCRIPT_URL='https://script.google.com/macros/s/AKfycbytl4bCh_vkBqqEEGRudNqFRLDD_lggNNm-pICC057fkTKWmwz01rkr4C98z5-QrEwAGQ/exec';
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbzyL4PAExlMdaJUtyw0t9q4CixX6FKL3xcggSSafJ4yo0Thk14HFT7OjuNmr46SyYwWAQ/exec';
 const TAB_MAP={socios:'socios',fact:'facturación',com:'comisiones',bajas:'bajas',accesos:'accesos',declinados:'declinados'};
 
 async function fetchSheet(url,tipo){
@@ -1048,18 +1048,23 @@ function cargarDemo(tipo){
    INIT — recupera URLs guardadas
 ═══════════════════════════ */
 (function init(){
-  // Load main tabs that have UI connectors
-  const urls={socios:'powr_url_socios',fact:'powr_url_fact',com:'powr_url_com'};
   const inputs={socios:'url-socios',fact:'url-fact',com:'url-com'};
-  Object.entries(urls).forEach(([tipo,key])=>{
-    const url=localStorage.getItem(key);
-    if(url){document.getElementById(inputs[tipo]).value=url;fetchSheet(url,tipo);}
+  ['socios','fact','com'].forEach(tipo=>{
+    const url=localStorage.getItem('powr_url_'+tipo==='fact'?'fact':tipo==='com'?'com':'socios');
+    if(url&&document.getElementById(inputs[tipo])){
+      document.getElementById(inputs[tipo]).value=url;
+    }
   });
-  // Auto-load secondary tabs from Apps Script if main socios is connected
-  const socUrl=localStorage.getItem('powr_url_socios');
-  if(socUrl){
-    ['bajas','accesos','declinados'].forEach(t=>fetchSheet('',t));
+  // Carga secuencial para no saturar el Apps Script
+  async function loadAll(){
+    await fetchSheet('','socios');
+    await fetchSheet('','fact');
+    await fetchSheet('','com');
+    await fetchSheet('','bajas');
+    await fetchSheet('','accesos');
+    await fetchSheet('','declinados');
   }
+  loadAll();
 })();
 </script>
 </body>
