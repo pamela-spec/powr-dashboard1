@@ -243,6 +243,8 @@ tr:last-child td{border-bottom:none}
   <div class="soc-tabs">
     <button class="soc-tab active" onclick="setSocTab('resumen',this)">Resumen</button>
     <button class="soc-tab" onclick="setSocTab('mensual',this)">Mensual</button>
+    <button class="soc-tab" onclick="setSocTab('adherencia',this)">Adherencia</button>
+    <button class="soc-tab" onclick="setSocTab('declinados',this)">Declinados</button>
     <button class="soc-tab" onclick="setSocTab('mix',this)">Mix</button>
     <button class="soc-tab" onclick="setSocTab('tabla',this)">Tabla</button>
   </div>
@@ -385,7 +387,7 @@ tr:last-child td{border-bottom:none}
 /* ═══════════════════════════
    ESTADO GLOBAL
 ═══════════════════════════ */
-let SOC_RAW=[], FACT_RAW=[], COM_RAW=[];
+let SOC_RAW=[], FACT_RAW=[], COM_RAW=[], BAJAS_RAW=[], ACCESOS_RAW=[], DECLINADOS_RAW=[];
 let gCentro='TODOS';
 let socTab='resumen', fMes='todos', fTab='todas';
 const MESES=['enero','febrero','marzo','abril','mayo'];
@@ -430,9 +432,13 @@ function setSyncState(s){
 
 async function syncAll(){
   setSyncState('loading');
+  // All tabs load from Apps Script directly
+  const tipos=['socios','bajas','accesos','declinados','fact','com'];
   let ok=true;
-  const urls={socios:localStorage.getItem('powr_url_socios'),fact:localStorage.getItem('powr_url_fact'),com:localStorage.getItem('powr_url_com')};
-  for(const [tipo,url] of Object.entries(urls)){if(url){const r=await fetchSheet(url,tipo);if(!r)ok=false;}}
+  for(const tipo of tipos){
+    const r=await fetchSheet('',tipo);
+    if(!r) ok=false;
+  }
   setSyncState(ok?'ok':'error');
 }
 
@@ -454,13 +460,13 @@ function parseCSV(text){
 function cleanNum(s){return parseFloat((s||'0').replace(/[$,\s]/g,''))||0;}
 function stamp(){return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});}
 
-const SCRIPT_URL='https://script.google.com/macros/s/AKfycbwzmsE2-gIJjtv-F7xEgnvwieWYoTOCEUGAG7vR5HxYYL-jebinF6TOKszmthnDcTFnBQ/exec';
-const TAB_MAP={socios:'socios',fact:'facturación',com:'comisiones'};
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbytl4bCh_vkBqqEEGRudNqFRLDD_lggNNm-pICC057fkTKWmwz01rkr4C98z5-QrEwAGQ/exec';
+const TAB_MAP={socios:'socios',fact:'facturación',com:'comisiones',bajas:'bajas',accesos:'accesos',declinados:'declinados'};
 
 async function fetchSheet(url,tipo){
   try{
     const tab=TAB_MAP[tipo]||tipo;
-    const apiUrl=SCRIPT_URL+'?tab='+tab;
+    const apiUrl=SCRIPT_URL+'?tab='+encodeURIComponent(tab);
     const res=await fetch(apiUrl);
     if(!res.ok) throw new Error('HTTP '+res.status);
     const json=await res.json();
@@ -508,6 +514,38 @@ function procesarData(rows,tipo){
     document.getElementById('fact-update').textContent='Actualizado '+stamp();
     document.getElementById('fact-config-banner').classList.add('hidden');
     renderFact();
+  } else if(tipo==='bajas'){
+    BAJAS_RAW=rows.map(r=>({
+      fechaBaja:r['fecha de baja']||r['fecha baja']||'',
+      nombre:r['nombre']||'',
+      plan:normPlan(r['plan']||''),
+      frecuencia:normFreq(r['frecuencia']||''),
+      causa:r['causa de baja']||r['motivo']||'',
+      fechaAlta:r['fecha de alta']||r['fecha alta']||'',
+      centro:(r['centro']||'').toUpperCase()
+    })).filter(r=>r.fechaBaja&&r.nombre);
+    renderSocios();
+  } else if(tipo==='accesos'){
+    // Formato: {nombre, 04/2025: N, 05/2025: N, ...}
+    ACCESOS_RAW=rows.map(r=>{
+      const obj={nombre:r['nombre']||''};
+      Object.keys(r).forEach(k=>{
+        if(k!=='nombre') obj[k]=parseInt(r[k])||0;
+      });
+      return obj;
+    }).filter(r=>r.nombre);
+    renderSocios();
+  } else if(tipo==='declinados'){
+    DECLINADOS_RAW=rows.map(r=>({
+      nombre:r['nombre']||'',
+      fechaSigGen:r['fecha sig generacion']||r['fecha sig generación']||r['fecha sig gener']||'',
+      saldo:cleanNum(r['saldo']),
+      centro:(r['centro']||'').toUpperCase(),
+      fechaVenc:r['fecha vencimiento cuota']||'',
+      token:r['token']||'',
+      idSub:r['id suscripción']||r['id suscripcion']||''
+    })).filter(r=>r.nombre);
+    renderSocios();
   } else {
     COM_RAW=rows.map(r=>{
       const cat=(r['categoria']||r['category']||'').trim();
@@ -519,6 +557,9 @@ function procesarData(rows,tipo){
     renderComisiones();
   }
 }
+
+function normPlan(p){const u=p.toUpperCase();return u.includes('BÁSICO')||u.includes('BASICO')?'Básico':u.includes('RESULT')?'Resultados':u.includes('PERFORM')?'Performance':p;}
+function normFreq(f){return f.charAt(0).toUpperCase()+f.slice(1).toLowerCase();}
 
 /* ═══════════════════════════
    CONECTAR / GUARDAR
@@ -568,27 +609,150 @@ function getSocFiltrado(){
 function limpiarSocios(){['soc-desde','soc-hasta'].forEach(id=>document.getElementById(id).value='');['soc-plan','soc-freq','soc-estado'].forEach(id=>document.getElementById(id).value='');renderSocios();}
 function setSocTab(t,btn){socTab=t;document.querySelectorAll('.soc-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderSocios();}
 
+function socAdherencia(){
+  if(!ACCESOS_RAW.length) return '<div class="no-data">Conecta la pestaña de accesos</div>';
+  const cols=Object.keys(ACCESOS_RAW[0]).filter(k=>k!=='nombre').sort();
+  const ultimos=cols.slice(-6);
+  const hoy=new Date();
+  const mesActual=hoy.toISOString().slice(0,7).replace('-','/');
+  // En riesgo: socios con 0 accesos en último mes
+  const enRiesgo=ACCESOS_RAW.filter(r=>{
+    const ult=ultimos[ultimos.length-1];
+    return ult&&(parseInt(r[ult])||0)===0;
+  });
+  let h=`<div class="mini-legend"><span><i style="background:var(--verde)"></i>Alta adherencia (8+)</span><span><i style="background:var(--amarillo)"></i>Media (3-7)</span><span><i style="background:var(--rojo)"></i>Riesgo (0-2)</span></div>`;
+  h+=`<div style="margin-bottom:14px;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--rojo)">⚠ ${enRiesgo.length} socios con 0 accesos en el último mes — riesgo de churn</div>`;
+  h+=`<div style="overflow-x:auto"><table><thead><tr><th>Socio</th>${ultimos.map(m=>`<th style="text-align:center">${m}</th>`).join('')}</tr></thead><tbody>`;
+  const sorted=[...ACCESOS_RAW].sort((a,b)=>{
+    const ult=ultimos[ultimos.length-1]||'';
+    return (parseInt(b[ult])||0)-(parseInt(a[ult])||0);
+  });
+  sorted.slice(0,50).forEach(r=>{
+    h+=`<tr><td style="font-size:11px">${r.nombre}</td>`;
+    ultimos.forEach(m=>{
+      const v=parseInt(r[m])||0;
+      const col=v>=8?'var(--verde)':v>=3?'var(--amarillo)':'var(--rojo)';
+      h+=`<td style="text-align:center;font-size:11px;color:${col};font-weight:${v===0?'600':'400'}">${v||'—'}</td>`;
+    });
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+  if(ACCESOS_RAW.length>50) h+=`<div style="font-size:11px;color:var(--muted);margin-top:8px">Mostrando 50 de ${ACCESOS_RAW.length} socios</div>`;
+  return h;
+}
+
+function socDeclinados(){
+  if(!DECLINADOS_RAW.length) return '<div class="no-data">Conecta la pestaña de declinados</div>';
+  const hoy=new Date();
+  const rojo=DECLINADOS_RAW.filter(d=>d.saldo>0||d.fechaVenc);
+  const sinTok=DECLINADOS_RAW.filter(d=>!d.token&&!d.idSub);
+  const venc30=DECLINADOS_RAW.filter(d=>{if(!d.fechaSigGen)return false;const dias=(new Date(d.fechaSigGen)-hoy)/(1000*60*60*24);return dias>=0&&dias<=30;});
+  let h=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:18px">
+    <div style="background:rgba(255,77,77,.1);border:1px solid var(--rojo);border-radius:8px;padding:14px;text-align:center">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Declinados / Vencidos</div>
+      <div style="font-family:var(--font-display);font-size:28px;color:var(--rojo)">${rojo.length}</div>
+      <div style="font-size:11px;color:var(--muted)">Baja probable este mes</div>
+    </div>
+    <div style="background:rgba(245,200,66,.1);border:1px solid var(--amarillo);border-radius:8px;padding:14px;text-align:center">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Sin Token</div>
+      <div style="font-family:var(--font-display);font-size:28px;color:var(--amarillo)">${sinTok.length}</div>
+      <div style="font-size:11px;color:var(--muted)">Sin recurrencia garantizada</div>
+    </div>
+    <div style="background:rgba(59,158,255,.1);border:1px solid var(--azul);border-radius:8px;padding:14px;text-align:center">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Vencen en 30 días</div>
+      <div style="font-family:var(--font-display);font-size:28px;color:var(--azul)">${venc30.length}</div>
+      <div style="font-size:11px;color:var(--muted)">Ventana de renovación</div>
+    </div>
+  </div>`;
+  h+=`<div style="overflow-x:auto"><table><thead><tr><th>Nombre</th><th>Centro</th><th>Próx. Generación</th><th>Saldo</th><th>Venc. Cuota</th><th>Token</th><th>Riesgo</th></tr></thead><tbody>`;
+  const sorted=[...DECLINADOS_RAW].sort((a,b)=>{
+    const ra=a.saldo>0||a.fechaVenc?0:!a.token&&!a.idSub?1:2;
+    const rb=b.saldo>0||b.fechaVenc?0:!b.token&&!b.idSub?1:2;
+    return ra-rb;
+  });
+  sorted.forEach(d=>{
+    const esRojo=d.saldo>0||d.fechaVenc;
+    const esSinTok=!d.token&&!d.idSub;
+    const esVenc=venc30.find(v=>v.nombre===d.nombre);
+    const riesgo=esRojo?'var(--rojo)':esSinTok?'var(--amarillo)':esVenc?'var(--azul)':'var(--verde)';
+    const riesgoLbl=esRojo?'ALTO':esSinTok?'MEDIO':esVenc?'RENOVAR':'OK';
+    h+=`<tr>
+      <td style="font-size:11px">${d.nombre}</td>
+      <td><span class="suc-tag">${d.centro||'—'}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${d.fechaSigGen||'—'}</td>
+      <td style="font-size:11px;color:${d.saldo>0?'var(--rojo)':'var(--verde)'}">$${d.saldo.toLocaleString('es-MX',{minimumFractionDigits:2})}</td>
+      <td style="font-size:11px;color:${d.fechaVenc?'var(--rojo)':'var(--muted)'}>${d.fechaVenc||'—'}</td>
+      <td style="font-size:10px;color:${d.token||d.idSub?'var(--verde)':'var(--rojo)'}"">${d.token||d.idSub?'✓':'✗'}</td>
+      <td><span class="kpi-badge" style="background:${riesgo}22;color:${riesgo}">${riesgoLbl}</span></td>
+    </tr>`;
+  });
+  h+='</tbody></table></div>';
+  return h;
+}
+
 function renderSocios(){
   if(!SOC_RAW.length)return;
   const data=getSocFiltrado();
-  const activos=data.filter(d=>d.estado==='Activo').length;
-  const bajas=data.filter(d=>d.estado==='Baja').length;
-  const ausentes=data.filter(d=>d.estado==='Ausente').length;
-  const total=data.length;
-  const mrr=data.filter(d=>d.estado==='Activo'&&d.frecuencia==='Mensual').reduce((s,d)=>s+d.monto,0);
-  const ret=total>0?Math.round(activos/total*100):0;
+
+  // NMG — desde facturación (fecha timbrado) o fecha de creación
+  const hoy=new Date();
+  const mesActual=hoy.toISOString().slice(0,7);
+  const mesAnterior=new Date(hoy.getFullYear(),hoy.getMonth()-1,1).toISOString().slice(0,7);
+
+  // Altas del mes desde facturación (fecha timbrado)
+  const altasMesFact=FACT_RAW.filter(f=>f.fecha&&f.fecha.slice(0,7)===mesActual&&!f.cancelacion).length;
+  const altasMesAnterior=FACT_RAW.filter(f=>f.fecha&&f.fecha.slice(0,7)===mesAnterior&&!f.cancelacion).length;
+
+  // Bajas del mes
+  const bajasMes=BAJAS_RAW.filter(b=>b.fechaBaja&&b.fechaBaja.slice(0,7)===mesActual).length;
+  const bajasMesAnterior=BAJAS_RAW.filter(b=>b.fechaBaja&&b.fechaBaja.slice(0,7)===mesAnterior).length;
+
+  // Churn rate = bajas mes / total activos inicio mes
+  const totalActivos=SOC_RAW.filter(d=>{const est=d.estado.toUpperCase();return est==='ACTIVO';}).length;
+  const churnRate=totalActivos>0?((bajasMes/totalActivos)*100).toFixed(1):0;
+  const churnMesAnt=totalActivos>0?((bajasMesAnterior/totalActivos)*100).toFixed(1):0;
+
+  // NMG neto = altas - bajas del mes
+  const nmgNeto=altasMesFact-bajasMes;
+
+  // Adherencia — promedio de accesos último mes disponible
+  let adherencia=0;
+  if(ACCESOS_RAW.length){
+    const cols=Object.keys(ACCESOS_RAW[0]).filter(k=>k!=='nombre');
+    const ultimoMes=cols[cols.length-1]||'';
+    if(ultimoMes){
+      const vals=ACCESOS_RAW.map(r=>parseInt(r[ultimoMes])||0).filter(v=>v>0);
+      adherencia=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):0;
+    }
+  }
+
+  // Riesgo declinados
+  const decRojo=DECLINADOS_RAW.filter(d=>d.saldo>0||d.fechaVenc).length;
+  const sinToken=DECLINADOS_RAW.filter(d=>!d.token&&!d.idSub).length;
+  const proxVenc30=DECLINADOS_RAW.filter(d=>{
+    if(!d.fechaSigGen)return false;
+    const dias=(new Date(d.fechaSigGen)-hoy)/(1000*60*60*24);
+    return dias>=0&&dias<=30;
+  }).length;
+
+  // MRR
+  const mrr=SOC_RAW.filter(d=>d.estado.toUpperCase()==='ACTIVO'&&d.frecuencia==='Mensual').reduce((s,d)=>s+d.monto,0);
+
   const cards=[
-    {lbl:'Socios Activos',val:activos,sub:`De ${total} registros`,col:'var(--verde)',ac:'var(--verde)'},
-    {lbl:'Bajas',val:bajas,sub:`${total>0?Math.round(bajas/total*100):0}% del total`,col:'var(--rojo)',ac:'var(--rojo)'},
-    {lbl:'Ausentes',val:ausentes,sub:'Sin renovación activa',col:'var(--amarillo)',ac:'var(--amarillo)'},
-    {lbl:'Retención',val:ret+'%',sub:'Activos / Total',col:'var(--azul)',ac:'var(--azul)'},
+    {lbl:'Socios Activos',val:totalActivos,sub:`NMG este mes: ${nmgNeto>=0?'+':''}${nmgNeto}`,col:'var(--verde)',ac:'var(--verde)'},
+    {lbl:'NMG Mensual',val:(altasMesFact>=0?'+':'')+altasMesFact,sub:`Altas por facturación · Mes ant: ${altasMesAnterior}`,col:'var(--azul)',ac:'var(--azul)'},
+    {lbl:'Churn Rate',val:churnRate+'%',sub:`${bajasMes} bajas este mes · Ant: ${churnMesAnt}%`,col:parseFloat(churnRate)>5?'var(--rojo)':parseFloat(churnRate)>2?'var(--amarillo)':'var(--verde)',ac:parseFloat(churnRate)>5?'var(--rojo)':parseFloat(churnRate)>2?'var(--amarillo)':'var(--verde)'},
+    {lbl:'Adherencia',val:adherencia+' visitas',sub:'Promedio por socio activo/mes',col:'var(--cyan)',ac:'var(--cyan)'},
     {lbl:'MRR Mensual',val:'$'+mrr.toLocaleString('es-MX'),sub:'Planes mensuales activos',col:'var(--purpura)',ac:'var(--purpura)'},
+    {lbl:'Riesgo Declinados',val:decRojo,sub:`Sin token: ${sinToken} · Vencen 30d: ${proxVenc30}`,col:'var(--rojo)',ac:'var(--rojo)'},
   ];
   document.getElementById('soc-kpis').innerHTML=cards.map(x=>`<div class="kpi-card" style="--ac:${x.ac}"><div class="kpi-label">${x.lbl}</div><div class="kpi-value" style="color:${x.col}">${x.val}</div><div class="kpi-sub">${x.sub}</div></div>`).join('');
 
   const el=document.getElementById('soc-content');
   if(socTab==='resumen') el.innerHTML=socResumen(data);
   else if(socTab==='mensual') el.innerHTML=socMensual(data);
+  else if(socTab==='adherencia') el.innerHTML=socAdherencia();
+  else if(socTab==='declinados') el.innerHTML=socDeclinados();
   else if(socTab==='mix') el.innerHTML=socMix(data);
   else el.innerHTML=socTabla(data);
 }
@@ -884,12 +1048,18 @@ function cargarDemo(tipo){
    INIT — recupera URLs guardadas
 ═══════════════════════════ */
 (function init(){
+  // Load main tabs that have UI connectors
   const urls={socios:'powr_url_socios',fact:'powr_url_fact',com:'powr_url_com'};
   const inputs={socios:'url-socios',fact:'url-fact',com:'url-com'};
   Object.entries(urls).forEach(([tipo,key])=>{
     const url=localStorage.getItem(key);
     if(url){document.getElementById(inputs[tipo]).value=url;fetchSheet(url,tipo);}
   });
+  // Auto-load secondary tabs from Apps Script if main socios is connected
+  const socUrl=localStorage.getItem('powr_url_socios');
+  if(socUrl){
+    ['bajas','accesos','declinados'].forEach(t=>fetchSheet('',t));
+  }
 })();
 </script>
 </body>
