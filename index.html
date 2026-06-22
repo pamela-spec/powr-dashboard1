@@ -455,15 +455,28 @@ function cleanNum(s){return parseFloat((s||'0').replace(/[$,\s]/g,''))||0;}
 function stamp(){return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});}
 
 async function fetchSheet(url,tipo){
-  try{
-    const proxy='https://corsproxy.io/?'+encodeURIComponent(url);
-    const res=await fetch(proxy);
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    const text=await res.text();
-    const rows=parseCSV(text);
-    procesarData(rows,tipo);
-    return true;
-  }catch(e){console.error('fetchSheet',tipo,e);return false;}
+  const proxies=[
+    'https://corsproxy.io/?'+encodeURIComponent(url),
+    'https://api.allorigins.win/raw?url='+encodeURIComponent(url),
+    'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(url),
+  ];
+  for(const proxy of proxies){
+    try{
+      const controller=new AbortController();
+      const tid=setTimeout(()=>controller.abort(),8000);
+      const res=await fetch(proxy,{signal:controller.signal});
+      clearTimeout(tid);
+      if(!res.ok) continue;
+      const text=await res.text();
+      if(!text||text.length<10) continue;
+      const rows=parseCSV(text);
+      if(!rows.length) continue;
+      procesarData(rows,tipo);
+      return true;
+    }catch(e){console.warn('proxy fallo',proxy,e.message);}
+  }
+  console.error('Todos los proxies fallaron para',tipo);
+  return false;
 }
 
 function procesarData(rows,tipo){
