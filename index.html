@@ -468,11 +468,17 @@ async function fetchSheet(url,tipo){
 
 function procesarData(rows,tipo){
   if(tipo==='socios'){
-    SOC_RAW=rows.map(r=>({
-      fecha:r['fecha']||'',nombre:r['nombre']||'',plan:r['plan']||'',
-      frecuencia:r['frecuencia']||'',pago:r['pago']||'',estado:r['estado']||'',
-      monto:cleanNum(r['monto']),centro:(r['centro']||r['sucursal']||'').toUpperCase()
-    })).filter(r=>r.fecha&&r.nombre);
+    SOC_RAW=rows.map(r=>{
+      const est=(r['estado']||'').trim();
+      const estNorm=est.toUpperCase()==='ACTIVO'?'Activo':est.toUpperCase()==='BAJA'?'Baja':est.toUpperCase()==='AUSENTE'?'Ausente':est;
+      const pl=(r['plan']||'').trim();
+      const plNorm=pl.toUpperCase().includes('BÁSICO')||pl.toUpperCase().includes('BASICO')?'Básico':pl.toUpperCase().includes('RESULT')?'Resultados':pl.toUpperCase().includes('PERFORM')?'Performance':pl;
+      const freq=(r['frecuencia']||'').trim();
+      const freqNorm=freq.charAt(0).toUpperCase()+freq.slice(1).toLowerCase();
+      return{fecha:r['fecha']||'',nombre:r['nombre']||'',plan:plNorm,
+      frecuencia:freqNorm,pago:r['pago']||'',estado:estNorm,
+      monto:cleanNum(r['monto']),centro:(r['centro']||r['sucursal']||'').toUpperCase()};
+    }).filter(r=>r.fecha&&r.nombre);
     document.getElementById('soc-update').textContent='Actualizado '+stamp();
     document.getElementById('soc-config-banner').classList.add('hidden');
     renderSocios();
