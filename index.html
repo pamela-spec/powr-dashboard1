@@ -197,8 +197,7 @@ tr:last-child td{border-bottom:none}
   <span class="centro-label">Centro:</span>
   <button class="centro-btn active" onclick="setCentro('TODOS',this)">Todos los centros</button>
   <button class="centro-btn" onclick="setCentro('RIO MIXCOAC',this)">Rio Mixcoac</button>
-  <button class="centro-btn" onclick="setCentro('STAFE',this)">STAFE</button>
-  <button class="centro-btn" onclick="setCentro('MIX',this)">MIX</button>
+  <button class="centro-btn" onclick="setCentro('SANTA FE DIAMANTE',this)">Santa Fe Diamante</button>
 </div>
 
 <!-- ══════════════════════════════════════════
@@ -353,6 +352,7 @@ tr:last-child td{border-bottom:none}
     <button class="filter-btn" onclick="setMes('febrero',this)">Febrero</button>
     <button class="filter-btn" onclick="setMes('marzo',this)">Marzo</button>
     <button class="filter-btn" onclick="setMes('abril',this)">Abril</button>
+    <button class="filter-btn" onclick="setMes('mayo',this)">Mayo</button>
   </div>
 
   <div id="kpi-grid" class="kpi-grid"></div>
@@ -388,8 +388,8 @@ tr:last-child td{border-bottom:none}
 let SOC_RAW=[], FACT_RAW=[], COM_RAW=[];
 let gCentro='TODOS';
 let socTab='resumen', fMes='todos', fTab='todas';
-const MESES=['enero','febrero','marzo','abril'];
-const QS=['01-15 enero','16-31 enero','01-15 febrero','16-28 febrero','01-15 marzo','16-31 marzo','01-15 abril','16-30 abril'];
+const MESES=['enero','febrero','marzo','abril','mayo'];
+const QS=['01-15 enero','16-31 enero','01-15 febrero','16-28 febrero','01-15 marzo','16-31 marzo','01-15 abril','16-30 abril','01-15 mayo','16-31 mayo'];
 const CATS=['Clases Grupales','Staff Deportivo','Staff Comercial'];
 const COL={'Clases Grupales':'#FF6B2B','Staff Deportivo':'#2ECC71','Staff Comercial':'#3B9EFF'};
 const PPTO={'Clases Grupales':70000,'Staff Deportivo':40000,'Staff Comercial':40000};
@@ -487,10 +487,11 @@ function procesarData(rows,tipo){
     document.getElementById('fact-config-banner').classList.add('hidden');
     renderFact();
   } else {
-    COM_RAW=rows.map(r=>({
-      q:r['quincena']||'',n:r['nombre']||'',i:cleanNum(r['importe']||r['monto']),
-      s:(r['sucursal']||r['centro']||'N/A').toUpperCase(),c:r['categoria']||''
-    })).filter(r=>r.q&&r.n);
+    COM_RAW=rows.map(r=>{
+      const cat=(r['categoria']||r['category']||'').trim();
+      const catNorm=cat.toLowerCase().includes('grupales')?'Clases Grupales':cat.toLowerCase().includes('deportivo')?'Staff Deportivo':cat.toLowerCase().includes('comercial')?'Staff Comercial':cat;
+      return{q:r['quincena']||'',n:r['nombre']||'',i:cleanNum(r['importe']||r['monto']),s:(r['sucursal']||r['centro']||'N/A').toUpperCase(),c:catNorm};
+    }).filter(r=>r.q&&r.n);
     document.getElementById('com-update').textContent='Actualizado '+stamp();
     document.getElementById('com-config-banner').classList.add('hidden');
     renderComisiones();
@@ -516,10 +517,9 @@ async function conectar(tipo){
 ═══════════════════════════ */
 function centroOk(centro){
   if(gCentro==='TODOS')return true;
-  // mapeo flexible: MIX ↔ RIO MIXCOAC ↔ MIXCOAC
-  const c=centro.toUpperCase();
-  if(gCentro==='RIO MIXCOAC') return c.includes('MIXCOAC')||c==='MIX';
-  if(gCentro==='MIX') return c.includes('MIXCOAC')||c==='MIX';
+  const c=centro.toUpperCase().trim();
+  if(gCentro==='RIO MIXCOAC') return c.includes('MIXCOAC')||c==='MIX'||c.includes('RIO MIX');
+  if(gCentro==='SANTA FE DIAMANTE') return c.includes('SANTA FE')||c.includes('DIAMANTE')||c==='STAFE'||c.includes('STAFE');
   return c===gCentro||c.includes(gCentro);
 }
 
@@ -737,7 +737,7 @@ function renderFactTabla(data){
 function getMes(q){for(const m of MESES)if(q.includes(m))return m;return '';}
 function isQ2(q){return !q.startsWith('01-');}
 function valid(d){if(d.c==='Staff Deportivo'||d.c==='Staff Comercial')return isQ2(d.q);return true;}
-function comSucOk(d){if(gCentro==='TODOS')return true;const s=d.s.toUpperCase();if(gCentro==='RIO MIXCOAC'||gCentro==='MIX')return s.includes('MIXCOAC')||s==='MIX';return s===gCentro||s.includes(gCentro);}
+function comSucOk(d){if(gCentro==='TODOS')return true;const s=d.s.toUpperCase().trim();if(gCentro==='RIO MIXCOAC')return s.includes('MIXCOAC')||s==='MIX'||s.includes('RIO MIX');if(gCentro==='SANTA FE DIAMANTE')return s.includes('SANTA FE')||s.includes('DIAMANTE')||s==='STAFE'||s.includes('STAFE');return s===gCentro||s.includes(gCentro);}
 function filtered(){return COM_RAW.filter(d=>{if(fMes!=='todos'&&getMes(d.q)!==fMes)return false;if(!comSucOk(d))return false;if(!valid(d))return false;return true;});}
 function fmt(n){return '$'+Math.round(n).toLocaleString('es-MX');}
 function pill(c){return c==='Clases Grupales'?'pn':c==='Staff Deportivo'?'pv':'pa';}
