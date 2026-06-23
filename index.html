@@ -472,7 +472,7 @@ function cleanDate(s){
 }
 function stamp(){return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});}
 
-const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyAr1OvtnJdcg8RKtcgNrQe-TxJ4PlOnu3uwGhMrtbPFJAgM3eW4H5XvrZeWX97iGsnkQ/exec';
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyJx-JvlwdqQvKvo8ZPTbO2JhXhkZT-Btcm14EeAzKj0EZAESVzRbYpCBaDcRrZu2TErQ/exec';
 const TAB_MAP={socios:'socios',fact:'facturación',com:'comisiones',bajas:'bajas',accesos:'accesos',declinados:'declinados'};
 
 async function fetchSheet(url,tipo){
@@ -540,11 +540,14 @@ function procesarData(rows,tipo){
     })).filter(r=>r.nombre);
     renderSocios();
   } else if(tipo==='accesos'){
-    // Formato: {nombre, 04/2025: N, 05/2025: N, ...}
+    // Headers vienen como MM/yyyy desde el Apps Script actualizado
     ACCESOS_RAW=rows.map(r=>{
       const obj={nombre:r['nombre']||''};
       Object.keys(r).forEach(k=>{
-        if(k!=='nombre') obj[k]=parseInt(r[k])||0;
+        if(k!=='nombre'){
+          // normalizar key: MM/yyyy o cualquier formato de mes
+          obj[k]=parseInt(r[k])||0;
+        }
       });
       return obj;
     }).filter(r=>r.nombre);
@@ -715,9 +718,17 @@ function renderSocios(){
   const ultimoMesFact=mesesFact[mesesFact.length-1]||'';
   const penultimoMesFact=mesesFact[mesesFact.length-2]||'';
 
-  // NMG — altas por facturación en último mes con datos
-  const altasMesFact=FACT_RAW.filter(f=>f.fecha&&f.fecha.slice(0,7)===ultimoMesFact&&!f.cancelacion).length;
-  const altasMesAnterior=FACT_RAW.filter(f=>f.fecha&&f.fecha.slice(0,7)===penultimoMesFact&&!f.cancelacion).length;
+  // NMG — socios que tienen su PRIMERA factura en el último mes (nuevos reales)
+  // Agrupamos por nombre y encontramos la fecha mínima de factura por socio
+  const primeraFactura={};
+  FACT_RAW.filter(f=>f.fecha&&!f.cancelacion).forEach(f=>{
+    const nombre=f.nombre||(f.centro+f.factura); // fallback si no hay nombre
+    if(!primeraFactura[f.factura]||f.fecha<primeraFactura[f.factura])
+      primeraFactura[f.factura]=f.fecha;
+  });
+  // NMG = facturas nuevas en el mes (primera vez que aparece esa factura)
+  const altasMesFact=Object.values(primeraFactura).filter(f=>f.slice(0,7)===ultimoMesFact).length;
+  const altasMesAnterior=Object.values(primeraFactura).filter(f=>f.slice(0,7)===penultimoMesFact).length;
 
   // Ticket promedio — total facturado / facturas vigentes último mes
   const factsUltimoMes=FACT_RAW.filter(f=>f.fecha&&f.fecha.slice(0,7)===ultimoMesFact&&!f.cancelacion);
