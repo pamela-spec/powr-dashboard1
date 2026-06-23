@@ -457,18 +457,21 @@ function parseCSV(text){
   }).filter(r=>Object.values(r).some(v=>v!==''));
 }
 
-function cleanNum(s){return parseFloat((s||'0').replace(/[$,\s]/g,''))||0;}
+function cleanNum(s){if(typeof s==='number')return s;return parseFloat((s||'0').toString().replace(/[$,\s]/g,'').replace(/[^0-9.-]/g,''))||0;}
 function cleanDate(s){
-  if(!s) return '';
+  if(!s||s===''||s==='0') return '';
   s=s.toString().trim();
-  // already yyyy-MM-dd
   if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // try to parse any date string
   try{
     const d=new Date(s);
-    if(!isNaN(d)) return d.toISOString().slice(0,10);
+    if(!isNaN(d.getTime())){
+      // adjust for timezone offset to avoid off-by-one
+      const offset=d.getTimezoneOffset();
+      const adj=new Date(d.getTime()-offset*60000);
+      return adj.toISOString().slice(0,10);
+    }
   }catch(e){}
-  return s;
+  return '';
 }
 function stamp(){return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});}
 
