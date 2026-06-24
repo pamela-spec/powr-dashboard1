@@ -543,14 +543,24 @@ function procesarData(rows,tipo){
     })).filter(r=>r.nombre);
     renderSocios();
   } else if(tipo==='accesos'){
-    // Headers vienen como MM/yyyy desde el Apps Script actualizado
+    // Los encabezados pueden venir como fechas largas — los normalizamos a MM/yyyy
     ACCESOS_RAW=rows.map(r=>{
       const obj={nombre:r['nombre']||''};
       Object.keys(r).forEach(k=>{
-        if(k!=='nombre'){
-          // normalizar key: MM/yyyy o cualquier formato de mes
-          obj[k]=parseInt(r[k])||0;
+        if(k==='nombre') return;
+        // Convertir key de fecha larga a MM/yyyy
+        let key=k;
+        if(k.length>7){
+          try{
+            const d=new Date(k);
+            if(!isNaN(d.getTime())){
+              const mm=String(d.getMonth()+1).padStart(2,'0');
+              const yyyy=d.getFullYear();
+              key=mm+'/'+yyyy;
+            }
+          }catch(e){}
         }
+        obj[key]=(obj[key]||0)+(parseInt(r[k])||0);
       });
       return obj;
     }).filter(r=>r.nombre);
@@ -558,10 +568,10 @@ function procesarData(rows,tipo){
   } else if(tipo==='declinados'){
     DECLINADOS_RAW=rows.map(r=>({
       nombre:r['nombre']||'',
-      fechaSigGen:r['fecha sig generacion']||r['fecha sig generación']||r['fecha sig gener']||'',
+      fechaSigGen:cleanDate(r['fecha sig generacion']||r['fecha sig generación']||r['fecha sig gener']||''),
       saldo:cleanNum(r['saldo']),
       centro:(r['centro']||'').toUpperCase(),
-      fechaVenc:r['fecha vencimiento cuota']||'',
+      fechaVenc:cleanDate(r['fecha vencimiento cuota']||''),
       token:r['token']||'',
       idSub:r['id suscripción']||r['id suscripcion']||''
     })).filter(r=>r.nombre);
@@ -721,17 +731,16 @@ function renderSocios(){
   const ultimoMesFact=mesesFact[mesesFact.length-1]||'';
   const penultimoMesFact=mesesFact[mesesFact.length-2]||'';
 
-  // NMG — socios que tienen su PRIMERA factura en el último mes (nuevos reales)
-  // Agrupamos por nombre y encontramos la fecha mínima de factura por socio
-  const primeraFactura={};
-  FACT_RAW.filter(f=>f.fecha&&!f.cancelacion).forEach(f=>{
-    const nombre=f.nombre||(f.centro+f.factura); // fallback si no hay nombre
-    if(!primeraFactura[f.factura]||f.fecha<primeraFactura[f.factura])
-      primeraFactura[f.factura]=f.fecha;
-  });
-  // NMG = facturas nuevas en el mes (primera vez que aparece esa factura)
-  const altasMesFact=Object.values(primeraFactura).filter(f=>f.slice(0,7)===ultimoMesFact).length;
-  const altasMesAnterior=Object.values(primeraFactura).filter(f=>f.slice(0,7)===penultimoMesFact).length;
+  // NMG — nuevos socios por fecha de creación (fecha de ingreso real al sistema)
+  // Usamos SOC_RAW con fecha de creación que es la más precisa
+  const mesesSoc=[...new Set(SOC_RAW.filter(s=>s.fecha).map(s=>s.fecha.slice(0,7)))].sort();
+  const ultimoMesSoc=mesesSoc[mesesSoc.length-1]||'';
+  const penultimoMesSoc=mesesSoc[mesesSoc.length-2]||'';
+  const altasMesFact=SOC_RAW.filter(s=>s.fecha&&s.fecha.slice(0,7)===ultimoMesSoc).length;
+  const altasMesAnterior=SOC_RAW.filter(s=>s.fecha&&s.fecha.slice(0,7)===penultimoMesSoc).length;
+  // Usar el último mes con datos para etiquetas
+  const ultimoMesFact=ultimoMesSoc;
+  const penultimoMesFact=penultimoMesSoc;
 
   // Ticket promedio — total facturado / facturas vigentes último mes
   const factsUltimoMes=FACT_RAW.filter(f=>f.fecha&&f.fecha.slice(0,7)===ultimoMesFact&&!f.cancelacion);
