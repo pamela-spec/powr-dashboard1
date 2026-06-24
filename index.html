@@ -652,20 +652,22 @@ function socAdherencia(){
   const ultimos=cols.slice(-6);
   const hoy=new Date();
   const mesActual=hoy.toISOString().slice(0,7).replace('-','/');
-  // En riesgo: socios con 0 accesos en último mes
-  const enRiesgo=ACCESOS_RAW.filter(r=>{
-    const ult=ultimos[ultimos.length-1];
-    return ult&&(parseInt(r[ult])||0)===0;
-  });
+  // Solo socios activos
+  const activosSet=new Set(SOC_RAW.filter(s=>s.estado.toUpperCase()==='ACTIVO').map(s=>s.nombre.toUpperCase().trim()));
+  const ultimaCol=ultimos[ultimos.length-1]||'';
+  // En riesgo: solo activos con 0 accesos en último mes
+  const enRiesgo=ACCESOS_RAW.filter(r=>
+    activosSet.has(r.nombre.toUpperCase().trim())&&(parseInt(r[ultimaCol])||0)===0
+  );
   let h=`<div class="mini-legend"><span><i style="background:var(--verde)"></i>Alta adherencia (8+)</span><span><i style="background:var(--amarillo)"></i>Media (3-7)</span><span><i style="background:var(--rojo)"></i>Riesgo (0-2)</span></div>`;
-  h+=`<div style="margin-bottom:14px;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--rojo)">⚠ ${enRiesgo.length} socios con 0 accesos en el último mes — riesgo de churn</div>`;
-  h+=`<div style="overflow-x:auto"><table><thead><tr><th>Socio</th>${ultimos.map(m=>`<th style="text-align:center">${m}</th>`).join('')}</tr></thead><tbody>`;
-  const sorted=[...ACCESOS_RAW].sort((a,b)=>{
-    const ult=ultimos[ultimos.length-1]||'';
-    return (parseInt(b[ult])||0)-(parseInt(a[ult])||0);
-  });
+  h+=`<div style="margin-bottom:14px;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--rojo)">⚠ ${enRiesgo.length} socios ACTIVOS con 0 accesos en ${ultimaCol} — riesgo de churn</div>`;
+  h+=`<div style="overflow-x:auto"><table><thead><tr><th>Socio</th><th>Estado</th>${ultimos.map(m=>`<th style="text-align:center">${m}</th>`).join('')}</tr></thead><tbody>`;
+  // Mostrar solo activos, ordenados por último mes desc
+  const sociosActivos=ACCESOS_RAW.filter(r=>activosSet.has(r.nombre.toUpperCase().trim()));
+  const sorted=[...sociosActivos].sort((a,b)=>(parseInt(b[ultimaCol])||0)-(parseInt(a[ultimaCol])||0));
   sorted.slice(0,50).forEach(r=>{
-    h+=`<tr><td style="font-size:11px">${r.nombre}</td>`;
+    const estado=SOC_RAW.find(s=>s.nombre.toUpperCase().trim()===r.nombre.toUpperCase().trim())?.estado||'';
+    h+=`<tr><td style="font-size:11px">${r.nombre}</td><td><span class="kpi-badge" style="background:var(--verde)22;color:var(--verde);font-size:10px">${estado}</span></td>`;
     ultimos.forEach(m=>{
       const v=parseInt(r[m])||0;
       const col=v>=8?'var(--verde)':v>=3?'var(--amarillo)':'var(--rojo)';
