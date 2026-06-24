@@ -659,8 +659,49 @@ function socAdherencia(){
   const enRiesgo=ACCESOS_RAW.filter(r=>
     activosSet.has(r.nombre.toUpperCase().trim())&&(parseInt(r[ultimaCol])||0)===0
   );
-  let h=`<div class="mini-legend"><span><i style="background:var(--verde)"></i>Alta adherencia (8+)</span><span><i style="background:var(--amarillo)"></i>Media (3-7)</span><span><i style="background:var(--rojo)"></i>Riesgo (0-2)</span></div>`;
-  h+=`<div style="margin-bottom:14px;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--rojo)">⚠ ${enRiesgo.length} socios ACTIVOS con 0 accesos en ${ultimaCol} — riesgo de churn</div>`;
+  // Calcular totales por rango para todos los activos en último mes
+  const totalActAdh=sociosActivos.length||1;
+  const altaAdh=sociosActivos.filter(r=>(parseInt(r[ultimaCol])||0)>=12).length;
+  const mediaAdh=sociosActivos.filter(r=>{const v=parseInt(r[ultimaCol])||0;return v>=8&&v<12;}).length;
+  const riesgoAdh=sociosActivos.filter(r=>(parseInt(r[ultimaCol])||0)<8&&(parseInt(r[ultimaCol])||0)>0).length;
+  const ceroAdh=enRiesgo.length;
+  const promMes=sociosActivos.length?Math.round(sociosActivos.reduce((s,r)=>s+(parseInt(r[ultimaCol])||0),0)/sociosActivos.length):0;
+
+  // Tendencia — comparar último mes vs penúltimo
+  const penultimaCol=ultimos[ultimos.length-2]||'';
+  const promPenult=penultimaCol&&sociosActivos.length?Math.round(sociosActivos.reduce((s,r)=>s+(parseInt(r[penultimaCol])||0),0)/sociosActivos.length):0;
+  const tendencia=promMes>promPenult?'↑':promMes<promPenult?'↓':'→';
+  const tendCol=promMes>promPenult?'var(--verde)':promMes<promPenult?'var(--rojo)':'var(--amarillo)';
+
+  let h=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+    <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">Promedio ${ultimaCol}</div>
+      <div style="font-family:var(--font-display);font-size:26px;color:var(--cyan)">${promMes} <span style="font-size:14px;color:${tendCol}">${tendencia}</span></div>
+      <div style="font-size:10px;color:var(--muted)">vs ${promPenult} en ${penultimaCol||'—'}</div>
+    </div>
+    <div style="background:rgba(46,204,113,.1);border:1px solid var(--verde);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">Alta (12+)</div>
+      <div style="font-family:var(--font-display);font-size:26px;color:var(--verde)">${altaAdh}</div>
+      <div style="font-size:10px;color:var(--muted)">${Math.round(altaAdh/totalActAdh*100)}% de activos</div>
+    </div>
+    <div style="background:rgba(245,200,66,.1);border:1px solid var(--amarillo);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">Media (8-11)</div>
+      <div style="font-family:var(--font-display);font-size:26px;color:var(--amarillo)">${mediaAdh}</div>
+      <div style="font-size:10px;color:var(--muted)">${Math.round(mediaAdh/totalActAdh*100)}% de activos</div>
+    </div>
+    <div style="background:rgba(255,77,77,.1);border:1px solid var(--rojo);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">Riesgo (1-7)</div>
+      <div style="font-family:var(--font-display);font-size:26px;color:var(--rojo)">${riesgoAdh}</div>
+      <div style="font-size:10px;color:var(--muted)">${Math.round(riesgoAdh/totalActAdh*100)}% de activos</div>
+    </div>
+    <div style="background:rgba(255,77,77,.15);border:1px solid var(--rojo);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">Sin accesos</div>
+      <div style="font-family:var(--font-display);font-size:26px;color:var(--rojo)">${ceroAdh}</div>
+      <div style="font-size:10px;color:var(--muted)">${Math.round(ceroAdh/totalActAdh*100)}% — churn inmediato</div>
+    </div>
+  </div>`;
+  h+=`<div class="mini-legend"><span><i style="background:var(--verde)"></i>Alta adherencia (12+)</span><span><i style="background:var(--amarillo)"></i>Media (8-11)</span><span><i style="background:var(--rojo)"></i>Riesgo (0-7)</span></div>`;
+  h+=`<div style="margin-bottom:14px;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--rojo)">⚠ ${ceroAdh} socios ACTIVOS con 0 accesos en ${ultimaCol} — riesgo de churn</div>`;
   h+=`<div style="overflow-x:auto"><table><thead><tr><th>Socio</th><th>Estado</th>${ultimos.map(m=>`<th style="text-align:center">${m}</th>`).join('')}</tr></thead><tbody>`;
   // Mostrar solo activos, ordenados por último mes desc
   const sociosActivos=ACCESOS_RAW.filter(r=>activosSet.has(r.nombre.toUpperCase().trim()));
@@ -670,7 +711,7 @@ function socAdherencia(){
     h+=`<tr><td style="font-size:11px">${r.nombre}</td><td><span class="kpi-badge" style="background:var(--verde)22;color:var(--verde);font-size:10px">${estado}</span></td>`;
     ultimos.forEach(m=>{
       const v=parseInt(r[m])||0;
-      const col=v>=8?'var(--verde)':v>=3?'var(--amarillo)':'var(--rojo)';
+      const col=v>=12?'var(--verde)':v>=8?'var(--amarillo)':'var(--rojo)';
       h+=`<td style="text-align:center;font-size:11px;color:${col};font-weight:${v===0?'600':'400'}">${v||'—'}</td>`;
     });
     h+='</tr>';
@@ -800,7 +841,7 @@ function renderSocios(){
     {lbl:'Socios Activos',val:totalActivos,sub:`NMG neto ${mesLabel}: ${nmgNeto>=0?'+':''}${nmgNeto}`,col:'var(--verde)',ac:'var(--verde)'},
     {lbl:'NMG Mensual',val:(altasMesFact>=0?'+':'')+altasMesFact,sub:`${mesLabel} · Mes ant: ${altasMesAnterior}`,col:'var(--azul)',ac:'var(--azul)'},
     {lbl:'Churn Rate',val:churnRate+'%',sub:`${bajasMes} bajas ${ultimoMesBajas||'—'} · Ant: ${churnMesAnt}%`,col:parseFloat(churnRate)>5?'var(--rojo)':parseFloat(churnRate)>2?'var(--amarillo)':'var(--verde)',ac:parseFloat(churnRate)>5?'var(--rojo)':parseFloat(churnRate)>2?'var(--amarillo)':'var(--verde)'},
-    {lbl:'Adherencia',val:adherencia+' visitas',sub:`Promedio/socio ${mesAdherencia||''}`,col:'var(--cyan)',ac:'var(--cyan)'},
+    {lbl:'Adherencia',val:adherencia+' visitas',sub:`Promedio/socio ${mesAdherencia||''}`,col:adherencia>=12?'var(--verde)':adherencia>=8?'var(--amarillo)':'var(--rojo)',ac:adherencia>=12?'var(--verde)':adherencia>=8?'var(--amarillo)':'var(--rojo)'},
     {lbl:'Ticket Promedio',val:ticketProm>0?'$'+ticketProm.toLocaleString('es-MX'):'—',sub:`${factsUltimoMes.length} facturas vigentes ${ultimoMesTP}`,col:'var(--purpura)',ac:'var(--purpura)'},
     {lbl:'Riesgo Declinados',val:decRojo,sub:`Sin token: ${sinToken} · Vencen 30d: ${proxVenc30}`,col:'var(--rojo)',ac:'var(--rojo)'},
   ];
@@ -898,7 +939,7 @@ function renderFact(){
   const cards=[
     {lbl:'Revenue Neto',val:'$'+totalNeto.toLocaleString('es-MX',{maximumFractionDigits:0}),sub:`${vigentes.length} facturas vigentes`,col:'var(--verde)',ac:'var(--verde)'},
     {lbl:'Monto Base (sin IVA)',val:'$'+montoBase.toLocaleString('es-MX',{maximumFractionDigits:0}),sub:'Subtotal vigentes',col:'var(--azul)',ac:'var(--azul)'},
-    {lbl:'IVA Generado',val:'$'+ivaTotal.toLocaleString('es-MX',{maximumFractionDigits:0}),sub:'16% sobre vigentes',col:'var(--cyan)',ac:'var(--cyan)'},
+    {lbl:'IVA Generado',val:'$'+ivaTotal.toLocaleString('es-MX',{maximumFractionDigits:0}),sub:'16% sobre vigentes',col:adherencia>=12?'var(--verde)':adherencia>=8?'var(--amarillo)':'var(--rojo)',ac:adherencia>=12?'var(--verde)':adherencia>=8?'var(--amarillo)':'var(--rojo)'},
     {lbl:'Canceladas',val:canceladas.length,sub:`$${totalCan.toLocaleString('es-MX',{maximumFractionDigits:0})} en riesgo`,col:'var(--rojo)',ac:'var(--rojo)'},
     {lbl:'% Cancelación',val:pctCan+'%',sub:'Del total de facturas',col:pctCan>15?'var(--rojo)':pctCan>8?'var(--amarillo)':'var(--verde)',ac:pctCan>15?'var(--rojo)':pctCan>8?'var(--amarillo)':'var(--verde)'},
   ];
