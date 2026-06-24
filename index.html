@@ -726,24 +726,17 @@ function renderSocios(){
 
   const hoy=new Date();
 
-  // Último mes con datos en facturación
-  const mesesFact=[...new Set(FACT_RAW.filter(f=>f.fecha&&!f.cancelacion).map(f=>f.fecha.slice(0,7)))].sort();
-  const ultimoMesFact=mesesFact[mesesFact.length-1]||'';
-  const penultimoMesFact=mesesFact[mesesFact.length-2]||'';
-
-  // NMG — nuevos socios por fecha de creación (fecha de ingreso real al sistema)
-  // Usamos SOC_RAW con fecha de creación que es la más precisa
+  // NMG — nuevos socios por fecha de creación
   const mesesSoc=[...new Set(SOC_RAW.filter(s=>s.fecha).map(s=>s.fecha.slice(0,7)))].sort();
-  const ultimoMesSoc=mesesSoc[mesesSoc.length-1]||'';
-  const penultimoMesSoc=mesesSoc[mesesSoc.length-2]||'';
-  const altasMesFact=SOC_RAW.filter(s=>s.fecha&&s.fecha.slice(0,7)===ultimoMesSoc).length;
-  const altasMesAnterior=SOC_RAW.filter(s=>s.fecha&&s.fecha.slice(0,7)===penultimoMesSoc).length;
-  // Usar el último mes con datos para etiquetas
-  const ultimoMesFact=ultimoMesSoc;
-  const penultimoMesFact=penultimoMesSoc;
+  const ultimoMesFact=mesesSoc[mesesSoc.length-1]||'';
+  const penultimoMesFact=mesesSoc[mesesSoc.length-2]||'';
+  const altasMesFact=SOC_RAW.filter(s=>s.fecha&&s.fecha.slice(0,7)===ultimoMesFact).length;
+  const altasMesAnterior=SOC_RAW.filter(s=>s.fecha&&s.fecha.slice(0,7)===penultimoMesFact).length;
 
-  // Ticket promedio — total facturado / facturas vigentes último mes
-  const factsUltimoMes=FACT_RAW.filter(f=>f.fecha&&f.fecha.slice(0,7)===ultimoMesFact&&!f.cancelacion);
+  // Ticket promedio — último mes con facturas vigentes
+  const mesesFact=[...new Set(FACT_RAW.filter(f=>f.fecha&&!f.cancelacion).map(f=>f.fecha.slice(0,7)))].sort();
+  const ultimoMesTP=mesesFact[mesesFact.length-1]||ultimoMesFact;
+  const factsUltimoMes=FACT_RAW.filter(f=>f.fecha&&f.fecha.slice(0,7)===ultimoMesTP&&!f.cancelacion);
   const totalUltimoMes=factsUltimoMes.reduce((s,f)=>s+f.total,0);
   const ticketProm=factsUltimoMes.length>0?Math.round(totalUltimoMes/factsUltimoMes.length):0;
 
@@ -793,7 +786,7 @@ function renderSocios(){
     {lbl:'NMG Mensual',val:(altasMesFact>=0?'+':'')+altasMesFact,sub:`${mesLabel} · Mes ant: ${altasMesAnterior}`,col:'var(--azul)',ac:'var(--azul)'},
     {lbl:'Churn Rate',val:churnRate+'%',sub:`${bajasMes} bajas ${ultimoMesBajas||'—'} · Ant: ${churnMesAnt}%`,col:parseFloat(churnRate)>5?'var(--rojo)':parseFloat(churnRate)>2?'var(--amarillo)':'var(--verde)',ac:parseFloat(churnRate)>5?'var(--rojo)':parseFloat(churnRate)>2?'var(--amarillo)':'var(--verde)'},
     {lbl:'Adherencia',val:adherencia+' visitas',sub:`Promedio/socio ${mesAdherencia||''}`,col:'var(--cyan)',ac:'var(--cyan)'},
-    {lbl:'Ticket Promedio',val:ticketProm>0?'$'+ticketProm.toLocaleString('es-MX'):'—',sub:`${factsUltimoMes.length} facturas vigentes ${mesLabel}`,col:'var(--purpura)',ac:'var(--purpura)'},
+    {lbl:'Ticket Promedio',val:ticketProm>0?'$'+ticketProm.toLocaleString('es-MX'):'—',sub:`${factsUltimoMes.length} facturas vigentes ${ultimoMesTP}`,col:'var(--purpura)',ac:'var(--purpura)'},
     {lbl:'Riesgo Declinados',val:decRojo,sub:`Sin token: ${sinToken} · Vencen 30d: ${proxVenc30}`,col:'var(--rojo)',ac:'var(--rojo)'},
   ];
   document.getElementById('soc-kpis').innerHTML=cards.map(x=>`<div class="kpi-card" style="--ac:${x.ac}"><div class="kpi-label">${x.lbl}</div><div class="kpi-value" style="color:${x.col}">${x.val}</div><div class="kpi-sub">${x.sub}</div></div>`).join('');
