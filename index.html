@@ -641,7 +641,14 @@ function setSocTab(t,btn){socTab=t;document.querySelectorAll('.soc-tab').forEach
 
 function socAdherencia(){
   if(!ACCESOS_RAW.length) return '<div class="no-data">Conecta la pestaña de accesos</div>';
-  const cols=Object.keys(ACCESOS_RAW[0]).filter(k=>k!=='nombre').sort();
+  // Ordenar columnas cronológicamente: MM/yyyy → yyyy-MM para sort correcto
+  const allCols=Object.keys(ACCESOS_RAW[0]).filter(k=>k!=='nombre');
+  const cols=allCols.sort((a,b)=>{
+    const pa=a.match(/(\d{2})\/(\d{4})/);
+    const pb=b.match(/(\d{2})\/(\d{4})/);
+    if(pa&&pb) return (pa[2]+pa[1]).localeCompare(pb[2]+pb[1]);
+    return a.localeCompare(b);
+  });
   const ultimos=cols.slice(-6);
   const hoy=new Date();
   const mesActual=hoy.toISOString().slice(0,7).replace('-','/');
@@ -762,7 +769,13 @@ function renderSocios(){
   // Adherencia
   let adherencia=0, mesAdherencia='';
   if(ACCESOS_RAW.length){
-    const cols=Object.keys(ACCESOS_RAW[0]).filter(k=>k!=='nombre').sort();
+    const allColsAdh=Object.keys(ACCESOS_RAW[0]).filter(k=>k!=='nombre');
+    const cols=allColsAdh.sort((a,b)=>{
+      const pa=a.match(/(\d{2})\/(\d{4})/);
+      const pb=b.match(/(\d{2})\/(\d{4})/);
+      if(pa&&pb) return (pa[2]+pa[1]).localeCompare(pb[2]+pb[1]);
+      return a.localeCompare(b);
+    });
     mesAdherencia=cols[cols.length-1]||'';
     if(mesAdherencia){
       const vals=ACCESOS_RAW.map(r=>parseInt(r[mesAdherencia])||0).filter(v=>v>0);
