@@ -244,6 +244,7 @@ tr:last-child td{border-bottom:none}
     <button class="soc-tab active" onclick="setSocTab('resumen',this)">Resumen</button>
     <button class="soc-tab" onclick="setSocTab('mensual',this)">Mensual</button>
     <button class="soc-tab" onclick="setSocTab('adherencia',this)">Adherencia</button>
+    <button class="soc-tab" onclick="setSocTab('ltv',this)">LTV</button>
     <button class="soc-tab" onclick="setSocTab('declinados',this)">Declinados</button>
     <button class="soc-tab" onclick="setSocTab('mix',this)">Mix</button>
     <button class="soc-tab" onclick="setSocTab('tabla',this)">Tabla</button>
@@ -721,6 +722,72 @@ function socAdherencia(){
   return h;
 }
 
+function socLTV(){
+  const ltv=calcLTV();
+  if(!ltv||ltv.count===0) return '<div class="no-data">Sin datos de bajas para calcular LTV</div>';
+
+  // Ticket promedio mensual desde facturación
+  const mesesFact=[...new Set(FACT_RAW.filter(f=>f.fecha&&!f.cancelacion).map(f=>f.fecha.slice(0,7)))].sort();
+  const ultiMes=mesesFact[mesesFact.length-1]||'';
+  const factsUlt=FACT_RAW.filter(f=>f.fecha&&f.fecha.slice(0,7)===ultiMes&&!f.cancelacion);
+  const ticketMensual=factsUlt.length>0?Math.round(factsUlt.reduce((s,f)=>s+f.total,0)/factsUlt.length):0;
+  const ltvValor=ltv.promMeses*ticketMensual;
+
+  let h=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px">
+    <div style="background:var(--surface2);border-radius:10px;padding:16px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">LTV Promedio (meses)</div>
+      <div style="font-family:var(--font-display);font-size:36px;color:var(--azul)">${ltv.promMeses}</div>
+      <div style="font-size:11px;color:var(--muted)">Basado en ${ltv.count} bajas históricas</div>
+    </div>
+    <div style="background:var(--surface2);border-radius:10px;padding:16px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">LTV en Valor</div>
+      <div style="font-family:var(--font-display);font-size:36px;color:var(--purpura)">$${ltvValor.toLocaleString('es-MX')}</div>
+      <div style="font-size:11px;color:var(--muted)">${ltv.promMeses} meses × $${ticketMensual.toLocaleString('es-MX')} ticket</div>
+    </div>
+    <div style="background:var(--surface2);border-radius:10px;padding:16px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Ticket Mensual Base</div>
+      <div style="font-family:var(--font-display);font-size:36px;color:var(--amarillo)">$${ticketMensual.toLocaleString('es-MX')}</div>
+      <div style="font-size:11px;color:var(--muted)">${ultiMes} · ${factsUlt.length} facturas</div>
+    </div>
+  </div>`;
+
+  // LTV por plan
+  h+=`<div style="margin-bottom:16px"><div class="section-title" style="font-size:14px;margin:0 0 10px">LTV por Plan</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">`;
+  const PCOL={'Básico':'#6b7280','Resultados':'var(--azul)','Performance':'var(--purpura)','Otros':'#6b7280'};
+  Object.entries(ltv.ltvPorPlan).sort((a,b)=>b[1].total/b[1].count-a[1].total/a[1].count).forEach(([plan,d])=>{
+    const avg=Math.round(d.total/d.count);
+    const val=avg*ticketMensual;
+    const col=PCOL[plan]||'#6b7280';
+    h+=`<div style="background:var(--surface2);border-radius:8px;padding:14px;border-left:3px solid ${col}">
+      <div style="font-size:11px;color:${col};font-weight:600;margin-bottom:6px">${plan}</div>
+      <div style="font-family:var(--font-display);font-size:22px;color:var(--text)">${avg} meses</div>
+      <div style="font-size:11px;color:var(--purpura)">$${val.toLocaleString('es-MX')}</div>
+      <div style="font-size:10px;color:var(--muted)">${d.count} bajas analizadas</div>
+    </div>`;
+  });
+  h+='</div></div>';
+
+  // Top 10 socios mayor LTV
+  const sociosLTV=BAJAS_RAW.filter(b=>b.fechaBaja&&b.fechaAlta).map(b=>{
+    const alta=new Date(b.fechaAlta),baja=new Date(b.fechaBaja);
+    if(isNaN(alta)||isNaN(baja)||baja<=alta) return null;
+    const meses=(baja.getFullYear()-alta.getFullYear())*12+(baja.getMonth()-alta.getMonth());
+    return{nombre:b.nombre,meses,valor:meses*ticketMensual,plan:b.plan||'—',causa:b.causa||'—'};
+  }).filter(Boolean).sort((a,b)=>b.meses-a.meses).slice(0,10);
+
+  h+=`<div style="margin-bottom:8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Top 10 Mayor LTV (bajas históricas)</div>
+  <div style="overflow-x:auto"><table><thead><tr><th>Nombre</th><th>Plan</th><th>Meses</th><th style="text-align:right">LTV</th><th>Causa baja</th></tr></thead><tbody>`;
+  sociosLTV.forEach(s=>{
+    h+=`<tr><td style="font-size:11px">${s.nombre}</td><td style="font-size:11px">${s.plan}</td>
+    <td style="text-align:center;color:var(--azul);font-weight:600">${s.meses}</td>
+    <td style="text-align:right;color:var(--purpura);font-weight:600">$${s.valor.toLocaleString('es-MX')}</td>
+    <td style="font-size:10px;color:var(--muted)">${s.causa}</td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  return h;
+}
+
 function socDeclinados(){
   if(!DECLINADOS_RAW.length) return '<div class="no-data">Conecta la pestaña de declinados</div>';
   const hoy=new Date();
@@ -851,6 +918,7 @@ function renderSocios(){
   if(socTab==='resumen') el.innerHTML=socResumen(data);
   else if(socTab==='mensual') el.innerHTML=socMensual(data);
   else if(socTab==='adherencia') el.innerHTML=socAdherencia();
+  else if(socTab==='ltv') el.innerHTML=socLTV();
   else if(socTab==='declinados') el.innerHTML=socDeclinados();
   else if(socTab==='mix') el.innerHTML=socMix(data);
   else el.innerHTML=socTabla(data);
@@ -874,14 +942,89 @@ function socResumen(data){
 }
 
 function socMensual(data){
-  const meses={};
-  data.forEach(d=>{const m=d.fecha.slice(0,7);if(!meses[m])meses[m]={activos:0,bajas:0,ausentes:0,total:0};meses[m].total++;if(d.estado==='Activo')meses[m].activos++;else if(d.estado==='Baja')meses[m].bajas++;else meses[m].ausentes++;});
-  const keys=Object.keys(meses).sort();
-  if(!keys.length)return '<div class="no-data">Sin datos</div>';
-  let h=`<div style="overflow-x:auto"><table><thead><tr><th>Mes</th><th>Total</th><th>Activos</th><th>Bajas</th><th>Ausentes</th><th>Retención</th></tr></thead><tbody>`;
-  keys.forEach(k=>{const r=meses[k];const ret=r.total>0?Math.round(r.activos/r.total*100):0;const mn=new Date(k+'-01').toLocaleString('es-MX',{month:'long',year:'numeric'});const cls=ret>=80?'bg-g':ret>=60?'bg-y':'bg-r';
-    h+=`<tr><td style="text-transform:capitalize">${mn}</td><td>${r.total}</td><td style="color:var(--verde)">${r.activos}</td><td style="color:var(--rojo)">${r.bajas}</td><td style="color:var(--amarillo)">${r.ausentes}</td><td><span class="kpi-badge ${cls}">${ret}%</span></td></tr>`;});
+  // Mapa de bajas: nombre → fecha de baja
+  const bajasPorNombre={};
+  BAJAS_RAW.forEach(b=>{if(b.nombre&&b.fechaBaja) bajasPorNombre[b.nombre.toUpperCase().trim()]=b.fechaBaja;});
+
+  // Columnas de accesos ordenadas cronológicamente
+  const accCols=ACCESOS_RAW.length?Object.keys(ACCESOS_RAW[0]).filter(k=>k!=='nombre').sort((a,b)=>{
+    const pa=a.match(/^(\d{2})\/(\d{4})$/),pb=b.match(/^(\d{2})\/(\d{4})$/);
+    if(pa&&pb)return(pa[2]+pa[1]).localeCompare(pb[2]+pb[1]);return a.localeCompare(b);
+  }):[];
+
+  if(!accCols.length) return '<div class="no-data">Sin datos de accesos para calcular adherencia</div>';
+
+  const resumen=accCols.map(col=>{
+    const parts=col.split('/');
+    if(parts.length!==2) return null;
+    const mm=parts[0],yyyy=parts[1];
+    const mesStr=yyyy+'-'+mm;
+    const mesDate=new Date(parseInt(yyyy),parseInt(mm)-1,1);
+
+    let denominador=0,conAccesos=0,nuevos=0,nuevosConAccesos=0;
+
+    ACCESOS_RAW.forEach(r=>{
+      const nombre=r.nombre.toUpperCase().trim();
+      const socio=SOC_RAW.find(s=>s.nombre.toUpperCase().trim()===nombre);
+      if(!socio||!socio.fecha) return;
+      const fechaAlta=new Date(socio.fecha);
+      if(isNaN(fechaAlta)||fechaAlta>mesDate) return;
+      const fechaBajaStr=bajasPorNombre[nombre]||'';
+      if(fechaBajaStr){
+        const fechaBaja=new Date(fechaBajaStr);
+        if(!isNaN(fechaBaja)&&fechaBaja<=mesDate) return;
+      }
+      denominador++;
+      const accesos=parseInt(r[col])||0;
+      if(accesos>0) conAccesos++;
+      const altaMes=socio.fecha.slice(0,7);
+      if(altaMes===mesStr){nuevos++;if(accesos>0)nuevosConAccesos++;}
+    });
+
+    const pctAdh=denominador>0?Math.round(conAccesos/denominador*100):0;
+    const pctNuevos=nuevos>0?Math.round(nuevosConAccesos/nuevos*100):0;
+    const mn=new Date(parseInt(yyyy),parseInt(mm)-1,1).toLocaleString('es-MX',{month:'long',year:'numeric'});
+    return{col,mn,denominador,conAccesos,pctAdh,nuevos,nuevosConAccesos,pctNuevos};
+  }).filter(Boolean);
+
+  let h=`<div style="overflow-x:auto"><table><thead><tr>
+    <th>Mes</th><th style="text-align:center">Activos ese mes</th><th style="text-align:center">Con accesos</th>
+    <th style="text-align:center">Adherencia</th><th style="text-align:center">Nuevos</th>
+    <th style="text-align:center">Nuevos con accesos</th><th style="text-align:center">Activación</th>
+  </tr></thead><tbody>`;
+  resumen.forEach(r=>{
+    const cls=r.pctAdh>=70?'bg-g':r.pctAdh>=50?'bg-y':'bg-r';
+    const clsN=r.pctNuevos>=70?'bg-g':r.pctNuevos>=50?'bg-y':'bg-r';
+    h+=`<tr>
+      <td style="text-transform:capitalize;white-space:nowrap">${r.mn}</td>
+      <td style="text-align:center">${r.denominador}</td>
+      <td style="text-align:center;color:var(--verde)">${r.conAccesos}</td>
+      <td style="text-align:center"><span class="kpi-badge ${cls}">${r.pctAdh}%</span></td>
+      <td style="text-align:center;color:var(--azul)">${r.nuevos}</td>
+      <td style="text-align:center;color:var(--cyan)">${r.nuevosConAccesos}</td>
+      <td style="text-align:center"><span class="kpi-badge ${clsN}">${r.pctNuevos>0?r.pctNuevos+'%':'—'}</span></td>
+    </tr>`;
+  });
   return h+'</tbody></table></div>';
+}
+
+function calcLTV(){
+  if(!BAJAS_RAW.length||!SOC_RAW.length) return null;
+  let totalMeses=0,count=0,ltvPorPlan={};
+  BAJAS_RAW.forEach(b=>{
+    if(!b.fechaBaja||!b.fechaAlta) return;
+    const alta=new Date(b.fechaAlta),baja=new Date(b.fechaBaja);
+    if(isNaN(alta)||isNaN(baja)||baja<=alta) return;
+    const meses=(baja.getFullYear()-alta.getFullYear())*12+(baja.getMonth()-alta.getMonth());
+    if(meses<=0||meses>120) return;
+    totalMeses+=meses;count++;
+    const socio=SOC_RAW.find(s=>s.nombre.toUpperCase().trim()===b.nombre.toUpperCase().trim());
+    const plan=socio?socio.plan:'Otros';
+    if(!ltvPorPlan[plan])ltvPorPlan[plan]={total:0,count:0};
+    ltvPorPlan[plan].total+=meses;ltvPorPlan[plan].count++;
+  });
+  const promMeses=count>0?Math.round(totalMeses/count):0;
+  return{promMeses,count,ltvPorPlan};
 }
 
 function socMix(data){
