@@ -1098,14 +1098,12 @@ function cargarDemo(tipo){
    INIT — recupera URLs guardadas
 ═══════════════════════════ */
 (function init(){
-  const inputs={socios:'url-socios',fact:'url-fact',com:'url-com'};
-  ['socios','fact','com'].forEach(tipo=>{
-    const url=localStorage.getItem('powr_url_'+tipo==='fact'?'fact':tipo==='com'?'com':'socios');
-    if(url&&document.getElementById(inputs[tipo])){
-      document.getElementById(inputs[tipo]).value=url;
-    }
+  // Ocultar banners — el Apps Script no necesita URL manual
+  ['soc-config-banner','fact-config-banner','com-config-banner'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.classList.add('hidden');
   });
-  // Carga secuencial para no saturar el Apps Script
+  // Carga secuencial
   async function loadAll(){
     await fetchSheet('','socios');
     await fetchSheet('','fact');
