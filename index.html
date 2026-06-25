@@ -923,18 +923,76 @@ function renderSocios(){
 }
 
 function socResumen(data){
+  // Filtros de fecha activos
+  const desde=document.getElementById('soc-desde').value;
+  const hasta=document.getElementById('soc-hasta').value;
+
+  // ALTAS: usar fecha alta de SOC_RAW filtrada por rango
+  const altasFiltradas=SOC_RAW.filter(d=>{
+    if(!d.fecha) return false;
+    if(desde&&d.fecha<desde) return false;
+    if(hasta&&d.fecha>hasta) return false;
+    return true;
+  });
+
+  // BAJAS: usar fecha de baja de BAJAS_RAW filtrada por rango
+  const bajasFiltradas=BAJAS_RAW.filter(b=>{
+    if(!b.fechaBaja) return false;
+    if(desde&&b.fechaBaja<desde) return false;
+    if(hasta&&b.fechaBaja>hasta) return false;
+    return true;
+  });
+
+  // Agrupar por mes
   const meses={};
-  data.forEach(d=>{const m=d.fecha.slice(0,7);if(!meses[m])meses[m]={altas:0,bajas:0};if(d.estado==='Baja')meses[m].bajas++;else meses[m].altas++;});
+  altasFiltradas.forEach(d=>{
+    const m=d.fecha.slice(0,7);
+    if(!meses[m])meses[m]={altas:0,bajas:0};
+    meses[m].altas++;
+  });
+  bajasFiltradas.forEach(b=>{
+    const m=b.fechaBaja.slice(0,7);
+    if(!meses[m])meses[m]={altas:0,bajas:0};
+    meses[m].bajas++;
+  });
+
   const keys=Object.keys(meses).sort();
   if(!keys.length)return '<div class="no-data">Sin datos para el filtro seleccionado</div>';
+
+  // Totales del período
+  const totalAltas=altasFiltradas.length;
+  const totalBajas=bajasFiltradas.length;
+  const neto=totalAltas-totalBajas;
+
+  let h=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+    <div style="background:rgba(46,204,113,.1);border:1px solid var(--verde);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">Altas del período</div>
+      <div style="font-family:var(--font-display);font-size:30px;color:var(--verde)">${totalAltas}</div>
+    </div>
+    <div style="background:rgba(255,77,77,.1);border:1px solid var(--rojo);border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">Bajas del período</div>
+      <div style="font-family:var(--font-display);font-size:30px;color:var(--rojo)">${totalBajas}</div>
+    </div>
+    <div style="background:${neto>=0?'rgba(46,204,113,.1)':'rgba(255,77,77,.1)'};border:1px solid ${neto>=0?'var(--verde)':'var(--rojo)'};border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">Neto</div>
+      <div style="font-family:var(--font-display);font-size:30px;color:${neto>=0?'var(--verde)':'var(--rojo)'}">${neto>=0?'+':''}${neto}</div>
+    </div>
+  </div>`;
+
+  h+=`<div class="mini-legend"><span><i style="background:var(--verde)"></i>Altas</span><span><i style="background:var(--rojo)"></i>Bajas</span><span><i style="background:var(--azul)"></i>Neto acumulado</span></div><div class="bar-chart">`;
+
   let acum=0;
-  const rows=keys.map(k=>{acum+=meses[k].altas-meses[k].bajas;const mn=new Date(k+'-01').toLocaleString('es-MX',{month:'short',year:'2-digit'});return{mn,altas:meses[k].altas,bajas:meses[k].bajas,acum};});
-  const mx=Math.max(...rows.map(r=>r.altas),1);
-  let h=`<div class="mini-legend"><span><i style="background:var(--verde)"></i>Altas</span><span><i style="background:var(--rojo)"></i>Bajas</span><span><i style="background:var(--azul)"></i>Acumulado neto</span></div><div class="bar-chart">`;
-  rows.forEach(r=>{const pa=(r.altas/mx*100).toFixed(1),pb=(r.bajas/mx*100).toFixed(1);
-    h+=`<div style="margin-bottom:12px"><div style="font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.8px">${r.mn} <span style="color:var(--azul)">acum: ${r.acum}</span></div>
-    <div class="bar-row"><div class="bar-name">Altas (${r.altas})</div><div class="bar-track"><div class="bar-fill" style="width:${pa}%;background:var(--verde)">${r.altas||''}</div></div></div>
-    <div class="bar-row" style="margin-top:3px"><div class="bar-name">Bajas (${r.bajas})</div><div class="bar-track"><div class="bar-fill" style="width:${pb}%;background:var(--rojo)">${r.bajas||''}</div></div></div></div>`;
+  const mx=Math.max(...keys.map(k=>Math.max(meses[k].altas||0,meses[k].bajas||0)),1);
+  keys.forEach(k=>{
+    const r=meses[k];
+    acum+=(r.altas||0)-(r.bajas||0);
+    const mn=new Date(k+'-01').toLocaleString('es-MX',{month:'short',year:'2-digit'});
+    const pa=((r.altas||0)/mx*100).toFixed(1),pb=((r.bajas||0)/mx*100).toFixed(1);
+    h+=`<div style="margin-bottom:12px">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.8px">${mn} <span style="color:var(--azul)">neto acum: ${acum>=0?'+':''}${acum}</span></div>
+      <div class="bar-row"><div class="bar-name">Altas (${r.altas||0})</div><div class="bar-track"><div class="bar-fill" style="width:${pa}%;background:var(--verde)">${r.altas||''}</div></div></div>
+      <div class="bar-row" style="margin-top:3px"><div class="bar-name">Bajas (${r.bajas||0})</div><div class="bar-track"><div class="bar-fill" style="width:${pb}%;background:var(--rojo)">${r.bajas||''}</div></div></div>
+    </div>`;
   });
   return h+'</div>';
 }
