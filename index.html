@@ -1138,7 +1138,7 @@ function renderFact(){
   const cards=[
     {lbl:'Revenue Neto',val:'$'+totalNeto.toLocaleString('es-MX',{maximumFractionDigits:0}),sub:`${vigentes.length} facturas vigentes`,col:'var(--verde)',ac:'var(--verde)'},
     {lbl:'Monto Base (sin IVA)',val:'$'+montoBase.toLocaleString('es-MX',{maximumFractionDigits:0}),sub:'Subtotal vigentes',col:'var(--azul)',ac:'var(--azul)'},
-    {lbl:'IVA Generado',val:'$'+ivaTotal.toLocaleString('es-MX',{maximumFractionDigits:0}),sub:'16% sobre vigentes',col:adherencia>=12?'var(--verde)':adherencia>=8?'var(--amarillo)':'var(--rojo)',ac:adherencia>=12?'var(--verde)':adherencia>=8?'var(--amarillo)':'var(--rojo)'},
+    {lbl:'IVA Generado',val:'$'+ivaTotal.toLocaleString('es-MX',{maximumFractionDigits:0}),sub:'16% sobre vigentes',col:'var(--cyan)',ac:'var(--cyan)'},
     {lbl:'Canceladas',val:canceladas.length,sub:`$${totalCan.toLocaleString('es-MX',{maximumFractionDigits:0})} en riesgo`,col:'var(--rojo)',ac:'var(--rojo)'},
     {lbl:'% Cancelación',val:pctCan+'%',sub:'Del total de facturas',col:pctCan>15?'var(--rojo)':pctCan>8?'var(--amarillo)':'var(--verde)',ac:pctCan>15?'var(--rojo)':pctCan>8?'var(--amarillo)':'var(--verde)'},
   ];
